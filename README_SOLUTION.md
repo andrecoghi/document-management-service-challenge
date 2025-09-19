@@ -39,12 +39,20 @@ This document explains how to build, run, and validate the document-management-s
    - `Created bucket document-bucket` from the application.
    - `INFO ... Started DocumentManagementServiceChallengeApplication` indicating Spring Boot is ready.
 4. When you are done, stop everything with `Ctrl+C`; add `-d` to run detached and later tear down with `docker compose -f docker/docker-compose.yml down`.
+5. To completely remove containers **and** persistent volumes, run:
+   ```bash
+   docker compose -f docker/docker-compose.yml down -v
+   ```
 
 ### 4.1 Services & Ports
 - `document_management_service` – REST API on `http://localhost:8080`.
 - `postgresql_container` – PostgreSQL 15.4 on `localhost:5432` (`postgres` / `postgres`, database `challenge`, schema `document_schema`).
 - `minio` – S3 API on `http://localhost:9000` and console on `http://localhost:9001` (`minioadmin` / `minioadmin`).
 - Named volumes `challenge_postgresql_data` and `challenge_minio_data` hold state across restarts.
+- If you run on Linux, ensure your host resolves `host.docker.internal` so presigned URLs work from the browser/CLI. Add the line below to `/etc/hosts` (or the equivalent host file) before testing downloads:
+  ```
+  127.0.0.1 host.docker.internal
+  ```
 
 ### 4.2 Customising Configuration
 Override defaults via environment variables before launching compose (or edit `docker/docker-compose.yml`):
