@@ -45,7 +45,7 @@ public class DocumentEntity {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
-  @ElementCollection(fetch = FetchType.EAGER)
+  @ElementCollection(fetch = FetchType.LAZY)
   @CollectionTable(name = "document_tags", joinColumns = @JoinColumn(name = "document_id"))
   @Column(name = "tag", nullable = false, length = 255)
   private Set<String> tags = new LinkedHashSet<>();

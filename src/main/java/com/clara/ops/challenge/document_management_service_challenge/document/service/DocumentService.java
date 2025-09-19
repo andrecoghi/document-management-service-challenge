@@ -52,12 +52,15 @@ public class DocumentService {
   @Transactional(readOnly = true)
   public Page<DocumentEntity> searchDocuments(DocumentSearchFilters filters, Pageable pageable) {
     log.info("Searching documents with filters: {} and pageable: {}", filters, pageable);
-    return documentRepository.findAll(
-        DocumentSpecifications.withFilters(
-            Optional.ofNullable(filters).map(DocumentSearchFilters::user).orElse(null),
-            Optional.ofNullable(filters).map(DocumentSearchFilters::fileName).orElse(null),
-            Optional.ofNullable(filters).map(DocumentSearchFilters::tags).orElse(null)),
-        pageable);
+    Page<DocumentEntity> page =
+        documentRepository.findAll(
+            DocumentSpecifications.withFilters(
+                Optional.ofNullable(filters).map(DocumentSearchFilters::user).orElse(null),
+                Optional.ofNullable(filters).map(DocumentSearchFilters::fileName).orElse(null),
+                Optional.ofNullable(filters).map(DocumentSearchFilters::tags).orElse(null)),
+            pageable);
+    page.getContent().forEach(entity -> entity.getTags().size());
+    return page;
   }
 
   @Transactional(readOnly = true)
