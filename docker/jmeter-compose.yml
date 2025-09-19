@@ -1,0 +1,24 @@
+services:
+  jmeter:
+    image: justb4/jmeter:5.5
+    container_name: jmeter
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - batch_network
+    volumes:
+      - ../jmeter:/jmeter
+    entrypoint:
+      - "sh"
+      - "-c"
+      - |
+        sleep 10 && echo 'Starting JMeter...' && \
+        jmeter -Dlog4j2.formatMsgNoLookups=true -n \
+          -t /jmeter/test-plan.jmx \
+          -l /jmeter/results/results.jtl \
+          -Jhost=document-management-service \
+          -Jport=8080 && echo 'JMeter done'
+networks:
+  batch_network:
+    external: true
+    name: batch_network

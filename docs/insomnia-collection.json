@@ -1,0 +1,82 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2025-09-18T12:47:00.000Z",
+  "__export_source": "insomnia.rest:2025.6.0",
+  "resources": [
+    {
+      "_id": "wrk_document_management",
+      "_type": "workspace",
+      "name": "Document Management Service API",
+      "description": "Workspace for Document Management Service API",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_document_management",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:8080"
+      }
+    },
+    {
+      "_id": "grp_document_management",
+      "_type": "request_group",
+      "parentId": "wrk_document_management",
+      "name": "Document Management",
+      "description": ""
+    },
+    {
+      "_id": "req_initiate_upload",
+      "_type": "request",
+      "parentId": "grp_document_management",
+      "name": "Initiate Upload",
+      "method": "POST",
+      "url": "{{ base_url }}/document-management/documents/uploads",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"user\": \"\",\n  \"fileName\": \"\",\n  \"tags\": []\n}"
+      }
+    },
+    {
+      "_id": "req_confirm_upload",
+      "_type": "request",
+      "parentId": "grp_document_management",
+      "name": "Confirm Upload",
+      "method": "POST",
+      "url": "{{ base_url }}/document-management/documents",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"user\": \"\",\n  \"fileName\": \"\",\n  \"tags\": [],\n  \"objectKey\": \"\",\n  \"fileSize\": 0,\n  \"contentType\": \"\"\n}"
+      }
+    },
+    {
+      "_id": "req_search_documents",
+      "_type": "request",
+      "parentId": "grp_document_management",
+      "name": "Search Documents",
+      "method": "POST",
+      "url": "{{ base_url }}/document-management/documents/search",
+      "parameters": [
+        { "name": "page", "value": "0" },
+        { "name": "size", "value": "20" },
+        { "name": "sort", "value": "" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"user\": \"\",\n  \"fileName\": \"\",\n  \"tags\": []\n}"
+      }
+    },
+    {
+      "_id": "req_download_document",
+      "_type": "request",
+      "parentId": "grp_document_management",
+      "name": "Download Document",
+      "method": "GET",
+      "url": "{{ base_url }}/document-management/documents/{{ documentId }}/download",
+      "parameters": [],
+      "body": {}
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+
+spring:
+  application:
+    name: document-management-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/challenge?currentSchema=document_schema}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_schema: document_schema
+        format_sql: true
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 600MB
+      max-request-size: 600MB
+      file-size-threshold: 0B
+      resolve-lazily: true
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  secure: ${MINIO_SECURE:false}
+
+document:
+  storage:
+    bucket: ${DOCUMENT_STORAGE_BUCKET:document-bucket}
+    prefix: ${DOCUMENT_STORAGE_PREFIX:}
+    presigned-url-expiry-seconds: ${DOCUMENT_STORAGE_PRESIGNED_EXPIRY_SECONDS:900}
+    download-url-base: ${DOCUMENT_STORAGE_DOWNLOAD_URL_BASE:}
+
+logging:
+  level:
+    com.clara.ops.challenge.document_management_service_challenge: INFO

@@ -1,6 +1,6 @@
 openapi: 3.0.1
 info:
-  title: Management Service API
+  title: Document Management Service API
   description: All Management Service functionalities
   version: v0.0.1
 servers:
@@ -10,57 +10,67 @@ tags:
   - name: Document Management
     description: Endpoints for document management.
 paths:
-  /document-management/upload:
+  /document-management/documents/uploads:
     post:
       tags:
         - Document Management
-      operationId: uploadDocument
+      operationId: initiateUpload
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UploadDocument'
-        required: true
+              $ref: '#/components/schemas/PresignedUrlRequest'
       responses:
         '201':
-          description: The document was uploaded successfully.
+          description: Presigned URL created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
         '400':
-          description: Bad Request
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Unauthorized
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Conflict'
         '500':
-          description: Internal Server Error
+          $ref: '#/components/responses/InternalServerError'
+  /document-management/documents:
+    post:
+      tags:
+        - Document Management
+      operationId: confirmUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmUploadRequest'
+      responses:
+        '201':
+          description: Document created successfully.
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-  /document-management/search:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /document-management/documents/search:
     post:
       tags:
         - Document Management
@@ -71,77 +81,52 @@ paths:
           description: Zero-based page index (0..N)
           required: false
           schema:
-            minimum: 0
             type: integer
+            minimum: 0
             default: 0
         - name: size
           in: query
           description: The size of the page to be returned
           required: false
           schema:
-            minimum: 1
             type: integer
+            minimum: 1
             default: 20
         - name: sort
           in: query
           description: >-
-            Sorting criteria in the format: property,(asc|desc). Default sort
-            order is ascending. Multiple sort criteria are supported.
+            Sorting criteria in the format: property,(asc|desc). Multiple criteria supported.
           required: false
           schema:
             type: array
             items:
               type: string
       requestBody:
+        required: false
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DocumentSearchFilters'
-        required: true
       responses:
         '200':
-          description: The documents were found successfully.
+          description: Documents found successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedDocumentSearch'
+                $ref: '#/components/schemas/PaginatedDocumentResponse'
         '400':
-          description: Bad Request
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Unauthorized
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Conflict'
         '500':
-          description: Internal Server Error
-          content:
-            '*/*':
-              schema:
-                type: object
-  /document-management/download/{documentId}:
+          $ref: '#/components/responses/InternalServerError'
+  /document-management/documents/{documentId}/download:
     get:
       tags:
         - Document Management
@@ -156,164 +141,170 @@ paths:
         '200':
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
-                $ref: '#/components/schemas/DocumentDownloadUrl'
+                $ref: '#/components/schemas/DocumentDownloadUrlResponse'
         '400':
-          description: Bad Request
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/BadRequest'
         '401':
-          description: Unauthorized
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/Conflict'
         '500':
-          description: Internal Server Error
-          content:
-            '*/*':
-              schema:
-                type: object
+          $ref: '#/components/responses/InternalServerError'
 components:
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        '*/*':
+          schema:
+            type: object
+    Unauthorized:
+      description: Unauthorized
+      content:
+        '*/*':
+          schema:
+            type: object
+    Forbidden:
+      description: Forbidden
+      content:
+        '*/*':
+          schema:
+            type: object
+    NotFound:
+      description: Not Found
+      content:
+        '*/*':
+          schema:
+            type: object
+    Conflict:
+      description: Conflict
+      content:
+        '*/*':
+          schema:
+            type: object
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        '*/*':
+          schema:
+            type: object
   schemas:
-    UploadDocument:
-      required:
-        - name
-        - tags
-        - user
+    PresignedUrlRequest:
       type: object
+      required:
+        - user
+        - fileName
+        - tags
       properties:
         user:
           type: string
-          description: The user who uploaded the document.
-        name:
+        fileName:
           type: string
-          description: The document name.
         tags:
           type: array
-          description: The document tags.
           items:
             type: string
-            description: The document tags.
-      description: The request to upload a document.
+    UploadUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+    ConfirmUploadRequest:
+      type: object
+      required:
+        - user
+        - fileName
+        - tags
+        - objectKey
+        - fileSize
+        - contentType
+      properties:
+        user:
+          type: string
+        fileName:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        objectKey:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        contentType:
+          type: string
+    DocumentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        size:
+          type: integer
+          format: int64
+        type:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
     DocumentSearchFilters:
       type: object
       properties:
         user:
           type: string
-          description: The user who uploaded the document.
           nullable: true
-        name:
+        fileName:
           type: string
-          description: The document name.
           nullable: true
         tags:
           type: array
-          description: The document tags.
-          nullable: true
           items:
             type: string
-            description: The document tags.
-            nullable: true
-      description: The document search filters.
-    Document:
+          nullable: true
+    PaginatedDocumentResponse:
       type: object
       properties:
-        id:
-          type: string
-          description: The document ID.
-        user:
-          type: string
-          description: The user who uploaded the document.
-        name:
-          type: string
-          description: The document name.
-        tags:
+        metadata:
+          $ref: '#/components/schemas/PaginationMetadata'
+        documents:
           type: array
-          description: The document tags.
           items:
-            type: string
-            description: The document tags.
-        size:
-          type: integer
-          description: The document size in bytes.
-          format: int32
-        type:
-          type: string
-          description: The document type.
-        createdAt:
-          type: string
-          description: The document creation date.
-      description: The document DTO.
-    Metadata:
+            $ref: '#/components/schemas/DocumentResponse'
+    PaginationMetadata:
       type: object
       properties:
         currentPage:
           type: integer
-          description: The current page. It starts at 0.
           format: int32
-          example: 1
         itemsPerPage:
           type: integer
-          description: The number of items per page, requested by the client.
           format: int32
-          example: 10
         currentItems:
           type: integer
-          description: >-
-            The number of items in the current page. It may be less than the
-            number of items per page, if the current page is the last one.
           format: int32
-          example: 9
         totalPages:
           type: integer
-          description: >-
-            The total number of pages. It is calculated using the total number
-            of items and the number of items per page.
           format: int32
-          example: 2
         totalItems:
           type: integer
-          description: The total number of items.
-          format: int32
-          example: 19
-      description: The metadata for the pagination.
-    PaginatedDocumentSearch:
-      type: object
-      properties:
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-        documents:
-          type: array
-          description: The list of documents.
-          items:
-            $ref: '#/components/schemas/Document'
-      description: The paginated document search response.
-    DocumentDownloadUrl:
+          format: int64
+    DocumentDownloadUrlResponse:
       type: object
       properties:
         url:
           type: string
-          description: The document download URL.
-      description: The document download URL.

@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:documentdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioaccess
+  secret-key: miniosecret
+  secure: false
+
+document:
+  storage:
+    bucket: test-bucket
+    prefix: test
+    presigned-url-expiry-seconds: 600

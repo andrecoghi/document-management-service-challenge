@@ -10,10 +10,10 @@ services:
       - challenge_postgresql_data:/bitnami/postgresql
       - ./init-scripts:/docker-entrypoint-initdb.d
     environment:
-      - POSTGRESQL_USERNAME={CHANGE_ME}
-      - POSTGRESQL_PASSWORD={CHANGE_ME}
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
       - POSTGRESQL_DATABASE=challenge
-      - POSTGRESQL_POSTGRES_PASSWORD={CHANGE_ME} # Password of user "postgres"
+      - POSTGRESQL_POSTGRES_PASSWORD=postgres # Password of user "postgres"
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -22,20 +22,44 @@ services:
       - "9000:9000"  # API S3
       - "9001:9001"  # MinIO Web Console
     environment:
-      MINIO_ROOT_USER: {CHANGE_ME}
-      MINIO_ROOT_PASSWORD: {CHANGE_ME}
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     command: server --console-address ":9001" /data
     volumes:
       - challenge_minio_data:/data
-  # Include all the necessary settings to include a document management service in the stack
-  # Remember to configure this service to limit the memory to 50MB
-  # document-management-service:
-  #    environment:
-  #      - JAVA_OPTS=-Xmx50m -Xms50m
-  #    deploy:
-  #      resources:
-  #        limits:
-  #          memory: 50M
+    networks:
+      - batch_network
+  document-management-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: document_management_service
+    depends_on:
+      - postgresql
+      - minio
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql_container:5432/challenge?currentSchema=document_schema
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - MINIO_ENDPOINT=http://host.docker.internal:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - DOCUMENT_STORAGE_BUCKET=document-bucket
+      - JAVA_OPTS=-Dserver.tomcat.reject-illegal-header=false -Xms50m -Xmx50m
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      batch_network:
+        aliases:
+          - document-management-service
+          - document_management_service
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
 
 volumes:
   challenge_postgresql_data:
@@ -45,4 +69,4 @@ volumes:
 
 networks:
   batch_network:
-    driver: bridge
+    name: batch_network
