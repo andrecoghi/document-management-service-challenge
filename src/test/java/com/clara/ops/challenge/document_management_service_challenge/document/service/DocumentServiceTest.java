@@ -3,9 +3,8 @@ package com.clara.ops.challenge.document_management_service_challenge.document.s
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,22 +23,99 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceTest {
+  @Mock private DocumentRepository documentRepository;
+
+  @Mock private DocumentStorage documentStorage;
+
+  private DocumentStorageProperties storageProperties;
+
+  private DocumentService documentService;
+
+  @BeforeEach
+  void setUp() {
+    storageProperties = new DocumentStorageProperties();
+    storageProperties.setBucket("document-bucket");
+    storageProperties.setPrefix("archive");
+    storageProperties.setPresignedUrlExpirySeconds(600);
+    documentService = new DocumentService(documentRepository, documentStorage, storageProperties);
+  }
+
   @Test
   void getPresignedUrl_ReturnsUrl_WhenValidRequest() {
     PresignedUrlRequest req = new PresignedUrlRequest("user", "Doc", Set.of("tag1"), 1L);
     when(documentStorage.generatePresignedPutUrl(any())).thenReturn("http://minio/put-url");
     String url = documentService.getPresignedUrl(req);
     assertThat(url).isEqualTo("http://minio/put-url");
+  }
+
+  @Test
+  void getPresignedUrl_GeneratesObjectKeyWithoutDuplicatePdfExtension() {
+    PresignedUrlRequest req = new PresignedUrlRequest("User", "Report.pdf", Set.of("tag1"), 10L);
+    when(documentStorage.generatePresignedPutUrl(any())).thenReturn("url");
+
+    documentService.getPresignedUrl(req);
+
+    ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+    verify(documentStorage).generatePresignedPutUrl(captor.capture());
+    assertThat(captor.getValue()).endsWith("report.pdf");
+  }
+
+  @Test
+  void getPresignedUrl_Throws_WhenFileSizeNotPositive() {
+    PresignedUrlRequest req = new PresignedUrlRequest("user", "Doc", Set.of("tag1"), 0L);
+
+    assertThatThrownBy(() -> documentService.getPresignedUrl(req))
+        .isInstanceOf(InvalidRequestException.class)
+        .hasMessageContaining("File size must be positive");
+
+    verify(documentStorage, never()).generatePresignedPutUrl(any());
+  }
+
+  @Test
+  void getPresignedUrl_Throws_WhenFileSizeNull() {
+    PresignedUrlRequest req = new PresignedUrlRequest("user", "Doc", Set.of("tag1"), null);
+
+    assertThatThrownBy(() -> documentService.getPresignedUrl(req))
+        .isInstanceOf(InvalidRequestException.class)
+        .hasMessageContaining("File size must be positive");
+
+    verify(documentStorage, never()).generatePresignedPutUrl(any());
+  }
+
+  @Test
+  void getPresignedUrl_UsesPrefixWhenConfiguredAndSkipsWhenEmpty() {
+    when(documentStorage.generatePresignedPutUrl(any())).thenReturn("url");
+
+    PresignedUrlRequest req = new PresignedUrlRequest("User", "Doc", Set.of(), 4L);
+    documentService.getPresignedUrl(req);
+
+    ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+    verify(documentStorage).generatePresignedPutUrl(captor.capture());
+    assertThat(captor.getValue()).startsWith("archive/");
+
+    DocumentStorageProperties props = new DocumentStorageProperties();
+    props.setBucket("bucket");
+    props.setPrefix("");
+    DocumentStorage storageWithoutPrefix = mock(DocumentStorage.class);
+    when(storageWithoutPrefix.generatePresignedPutUrl(any())).thenReturn("url");
+    DocumentService serviceWithoutPrefix =
+        new DocumentService(documentRepository, storageWithoutPrefix, props);
+
+    serviceWithoutPrefix.getPresignedUrl(req);
+
+    ArgumentCaptor<String> noPrefixCaptor = ArgumentCaptor.forClass(String.class);
+    verify(storageWithoutPrefix).generatePresignedPutUrl(noPrefixCaptor.capture());
+    assertThat(noPrefixCaptor.getValue()).doesNotContain("archive/");
   }
 
   @Test
@@ -74,6 +150,56 @@ class DocumentServiceTest {
   }
 
   @Test
+  void confirmUpload_StripsBucketPrefixFromObjectKey() {
+    var req =
+        new com.clara.ops.challenge.document_management_service_challenge.document.dto
+            .ConfirmUploadRequest(
+            "user",
+            "Doc",
+            Set.of(" TAG1 ", ""),
+            "http://localhost/document-bucket/user/doc.pdf",
+            123L,
+            "application/pdf");
+    when(documentStorage.getBucket()).thenReturn("document-bucket");
+    when(documentRepository.save(any(DocumentEntity.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0, DocumentEntity.class));
+
+    DocumentEntity saved = documentService.confirmUpload(req);
+
+    assertThat(saved.getObjectKey()).isEqualTo("user/doc.pdf");
+    assertThat(saved.getTags()).containsExactly("tag1");
+  }
+
+  @Test
+  void confirmUpload_FallsBackToRawKeyWhenUriInvalid() {
+    var req =
+        new com.clara.ops.challenge.document_management_service_challenge.document.dto
+            .ConfirmUploadRequest(
+            "user", "Doc", Set.of(), "http://example.com/%invalid", 10L, "application/pdf");
+    when(documentStorage.getBucket()).thenReturn("bucket");
+    when(documentRepository.save(any(DocumentEntity.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0, DocumentEntity.class));
+
+    DocumentEntity saved = documentService.confirmUpload(req);
+
+    assertThat(saved.getObjectKey()).isEqualTo("http://example.com/%invalid");
+  }
+
+  @Test
+  void generateDownloadUrlThrowsWhenStorageFails() {
+    UUID id = UUID.randomUUID();
+    DocumentEntity entity = new DocumentEntity();
+    entity.setId(id);
+    entity.setObjectKey("archive/user/file.pdf");
+    when(documentRepository.findById(id)).thenReturn(java.util.Optional.of(entity));
+    when(documentStorage.generatePresignedGetUrl("archive/user/file.pdf"))
+        .thenThrow(new RuntimeException("boom"));
+
+    assertThatThrownBy(() -> documentService.generateDownloadUrl(id))
+        .isInstanceOf(DocumentNotFoundException.class);
+  }
+
+  @Test
   void confirmUpload_Throws_WhenInvalidRequest() {
     var reqMissingUser =
         new com.clara.ops.challenge.document_management_service_challenge.document.dto
@@ -102,65 +228,6 @@ class DocumentServiceTest {
         .isInstanceOf(InvalidRequestException.class);
     assertThatThrownBy(() -> documentService.confirmUpload(reqMissingType))
         .isInstanceOf(InvalidRequestException.class);
-  }
-
-  @Mock private DocumentRepository documentRepository;
-
-  @Mock private DocumentStorage documentStorage;
-
-  private DocumentStorageProperties storageProperties;
-
-  private DocumentService documentService;
-
-  @BeforeEach
-  void setUp() {
-    storageProperties = new DocumentStorageProperties();
-    storageProperties.setBucket("document-bucket");
-    storageProperties.setPrefix("archive");
-    storageProperties.setPresignedUrlExpirySeconds(600);
-    documentService = new DocumentService(documentRepository, documentStorage, storageProperties);
-  }
-
-  @Test
-  void uploadDocument_StoresMetadataAndStreamsToStorage() {
-    MockMultipartFile pdf =
-        new MockMultipartFile("file", "sample.pdf", "application/pdf", new byte[] {1, 2, 3});
-    PresignedUrlRequest request =
-        new PresignedUrlRequest("User One", "Report", Set.of("Finance", "Q1"), 1L);
-
-    when(documentStorage.getBucket()).thenReturn("document-bucket");
-    when(documentRepository.save(any(DocumentEntity.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0, DocumentEntity.class));
-
-    DocumentEntity result = documentService.uploadDocument(pdf, request);
-
-    assertThat(result.getId()).isNull();
-    assertThat(result.getBucket()).isEqualTo("document-bucket");
-    assertThat(result.getObjectKey()).matches("archive/user-one/[a-f0-9\\-]{36}-report\\.pdf");
-    assertThat(result.getTags()).containsExactlyInAnyOrder("finance", "q1");
-    assertThat(result.getCreatedAt()).isNotNull();
-
-    verify(documentStorage)
-        .upload(
-            argThat(key -> key.matches("archive/user-one/[a-f0-9\\-]{36}-report\\.pdf")),
-            any(),
-            eq(3L),
-            eq("application/pdf"));
-    verify(documentRepository).save(any(DocumentEntity.class));
-  }
-
-  @Test
-  void uploadDocumentRejectsNonPdfFiles() {
-    MockMultipartFile textFile =
-        new MockMultipartFile("file", "notes.txt", "text/plain", new byte[] {1});
-    PresignedUrlRequest request = new PresignedUrlRequest("user", "doc", Set.of(), 1L);
-
-    assertThatThrownBy(() -> documentService.uploadDocument(textFile, request))
-        .isInstanceOf(InvalidRequestException.class)
-        .hasMessageContaining("Only PDF documents are supported");
-
-    verify(documentStorage, never()).upload(any(), any(), anyLong(), any());
-    verify(documentRepository, never()).save(any());
   }
 
   @Test

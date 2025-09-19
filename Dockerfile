@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM eclipse-temurin:17-jdk AS build
+FROM openjdk:17-jdk-slim AS build
 WORKDIR /workspace
 
 COPY .mvn .mvn
@@ -10,7 +10,7 @@ RUN ./mvnw -B dependency:go-offline
 COPY src src
 RUN ./mvnw -B clean package -DskipTests
 
-FROM eclipse-temurin:17-jre AS runtime
+FROM openjdk:17-jdk-slim AS runtime
 ENV JAVA_OPTS="-Xms50m -Xmx50m"
 WORKDIR /app
 

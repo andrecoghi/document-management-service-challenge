@@ -10,13 +10,13 @@ import com.clara.ops.challenge.document_management_service_challenge.document.dt
 import com.clara.ops.challenge.document_management_service_challenge.document.mapper.DocumentMapper;
 import com.clara.ops.challenge.document_management_service_challenge.document.service.DocumentService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -25,27 +25,23 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping(path = "/document-management")
 @Validated
+@RequiredArgsConstructor
+@Slf4j
 public class DocumentController {
 
   private final DocumentService documentService;
   private final DocumentMapper documentMapper;
 
-  public DocumentController(DocumentService documentService, DocumentMapper documentMapper) {
-    this.documentService = documentService;
-    this.documentMapper = documentMapper;
-  }
-
   @PostMapping(path = "/documents/uploads", consumes = MediaType.APPLICATION_JSON_VALUE)
   @ResponseStatus(HttpStatus.CREATED)
   public UploadUrlResponse initiateUpload(@Valid @RequestBody PresignedUrlRequest metadata) {
-    String url = documentService.getPresignedUrl(metadata);
+    var url = documentService.getPresignedUrl(metadata);
     return new UploadUrlResponse(url);
   }
 
@@ -58,45 +54,35 @@ public class DocumentController {
   @PostMapping(path = "/documents/search", consumes = MediaType.APPLICATION_JSON_VALUE)
   public PaginatedDocumentResponse searchDocuments(
       @RequestBody(required = false) DocumentSearchFilters filters,
-      @RequestParam(name = "page", defaultValue = "0") @Min(0) int page,
-      @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(100) int size,
-      @RequestParam(name = "sort", required = false) List<String> sortParams) {
-    Pageable pageable = PageRequest.of(page, size, buildSort(sortParams));
-    return documentMapper.toPaginatedResponse(documentService.searchDocuments(filters, pageable));
+      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+          Pageable pageable) {
+    var sanitizedPageable = sanitizePageable(pageable);
+    return documentMapper.toPaginatedResponse(
+        documentService.searchDocuments(filters, sanitizedPageable));
   }
 
   @GetMapping(path = "/documents/{documentId}/download")
   public DocumentDownloadUrlResponse downloadDocument(@PathVariable UUID documentId) {
-    String url = documentService.generateDownloadUrl(documentId);
+    var url = documentService.generateDownloadUrl(documentId);
     return new DocumentDownloadUrlResponse(url);
   }
 
-  private Sort buildSort(List<String> sortParams) {
-    if (sortParams == null || sortParams.isEmpty()) {
-      return Sort.by(Sort.Order.desc("createdAt"));
+  private Pageable sanitizePageable(Pageable incoming) {
+    int page = Math.max(incoming.getPageNumber(), 0);
+    int rawSize = incoming.getPageSize();
+    int size = Math.min(Math.max(rawSize, 1), 100);
+    Sort sort = incoming.getSort();
+    if (sort == null || sort.isUnsorted()) {
+      sort = Sort.by(Sort.Order.desc("createdAt"));
     }
-
-    List<Sort.Order> orders = new java.util.ArrayList<>();
-    for (String param : sortParams) {
-      if (param == null || param.isBlank()) {
-        continue;
-      }
-      String[] tokens = param.split(",");
-      String property = tokens[0].trim();
-      Sort.Direction direction = Sort.Direction.DESC;
-      if (tokens.length > 1) {
-        try {
-          direction = Sort.Direction.fromString(tokens[1].trim());
-        } catch (IllegalArgumentException ignored) {
-          direction = Sort.Direction.DESC;
-        }
-      }
-      orders.add(new Sort.Order(direction, property));
+    if (page != incoming.getPageNumber() || size != rawSize) {
+      log.debug(
+          "Adjusted pageable parameters from page={}, size={} to page={}, size={}.",
+          incoming.getPageNumber(),
+          rawSize,
+          page,
+          size);
     }
-
-    if (orders.isEmpty()) {
-      orders.add(Sort.Order.desc("createdAt"));
-    }
-    return Sort.by(orders);
+    return PageRequest.of(page, size, sort);
   }
 }

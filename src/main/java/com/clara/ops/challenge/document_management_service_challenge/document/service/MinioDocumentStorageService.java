@@ -1,7 +1,6 @@
 package com.clara.ops.challenge.document_management_service_challenge.document.service;
 
 import com.clara.ops.challenge.document_management_service_challenge.config.DocumentStorageProperties;
-import com.clara.ops.challenge.document_management_service_challenge.config.MinioProperties;
 import com.clara.ops.challenge.document_management_service_challenge.exception.InvalidRequestException;
 import com.clara.ops.challenge.document_management_service_challenge.exception.StorageException;
 import io.minio.BucketExistsArgs;
@@ -18,37 +17,19 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class MinioDocumentStorageService implements DocumentStorage {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(MinioDocumentStorageService.class);
 
   private final MinioClient minioClient;
   private final DocumentStorageProperties properties;
-  private final MinioProperties minioProperties;
   private final AtomicBoolean bucketReady = new AtomicBoolean();
-
-  @Autowired
-  public MinioDocumentStorageService(
-      MinioClient minioClient,
-      DocumentStorageProperties properties,
-      MinioProperties minioProperties) {
-    this.minioClient = minioClient;
-    this.properties = properties;
-    this.minioProperties = minioProperties;
-  }
-
-  /** Backward-compatible constructor for tests. */
-  public MinioDocumentStorageService(
-      MinioClient minioClient, DocumentStorageProperties properties) {
-    this(minioClient, properties, new MinioProperties());
-  }
 
   @PostConstruct
   public void initBucket() {
@@ -58,17 +39,12 @@ public class MinioDocumentStorageService implements DocumentStorage {
   @Override
   public void upload(String objectKey, InputStream inputStream, long size, String contentType) {
     ensureBucket();
-    LOGGER.info(
+    log.info(
         "[Minio Upload] Starting upload: objectKey={}, size={}, contentType={}",
         objectKey,
         size,
         contentType);
-    byte[] data;
-    try {
-      data = inputStream.readAllBytes();
-    } catch (IOException e) {
-      throw new StorageException("Failed to read input stream", e);
-    }
+    var data = toByteArray(inputStream);
     int maxAttempts = 3;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -77,33 +53,23 @@ public class MinioDocumentStorageService implements DocumentStorage {
                     new ByteArrayInputStream(data), data.length, -1)
                 .contentType(contentType)
                 .build());
-        LOGGER.info("[Minio Upload] Upload completed successfully: objectKey={}", objectKey);
+        log.info("[Minio Upload] Upload completed successfully: objectKey={}", objectKey);
         return;
-      } catch (Exception exception) {
+      } catch (Exception e) {
         if (attempt == maxAttempts) {
-          Throwable cause = exception.getCause();
-          String causeType = (cause != null) ? cause.getClass().getName() : "null";
-          String causeMsg = (cause != null) ? cause.getMessage() : "null";
-          LOGGER.error(
+          log.error(
               "[Minio Upload] Error uploading after {} attempts: objectKey={}, exceptionType={},"
-                  + " message={}, causeType={}, causeMessage={}",
+                  + " message={}, cause={}",
               attempt,
               objectKey,
-              exception.getClass().getName(),
-              exception.getMessage(),
-              causeType,
-              causeMsg,
-              exception);
-          throw new StorageException("Failed to upload object to storage after retries", exception);
+              e.getClass().getName(),
+              e.getMessage(),
+              e.getCause(),
+              e);
+          throw new StorageException("Failed to upload object to storage after retries", e);
         }
-        LOGGER.warn(
-            "[Minio Upload] Attempt {}/{} failed, retrying...", attempt, maxAttempts, exception);
-        try {
-          Thread.sleep(1000L * attempt);
-        } catch (InterruptedException ie) {
-          Thread.currentThread().interrupt();
-          throw new StorageException("Upload retry interrupted", ie);
-        }
+        log.warn("[Minio Upload] Attempt {}/{} failed, retrying...", attempt, maxAttempts, e);
+        sleep(attempt);
       }
     }
   }
@@ -111,8 +77,7 @@ public class MinioDocumentStorageService implements DocumentStorage {
   @Override
   public String generatePresignedGetUrl(String objectKey) {
     ensureBucket();
-    LOGGER.info(
-        "[Minio Download] Checking object: bucket={}, objectKey={}", getBucket(), objectKey);
+    log.info("[Minio Download] Checking object: bucket={}, objectKey={}", getBucket(), objectKey);
     try {
       minioClient.statObject(
           StatObjectArgs.builder().bucket(getBucket()).object(objectKey).build());
@@ -120,7 +85,7 @@ public class MinioDocumentStorageService implements DocumentStorage {
       throw new StorageException("Failed to access object", e);
     }
     try {
-      String url =
+      var url =
           minioClient.getPresignedObjectUrl(
               GetPresignedObjectUrlArgs.builder()
                   .method(Method.GET)
@@ -128,21 +93,20 @@ public class MinioDocumentStorageService implements DocumentStorage {
                   .object(objectKey)
                   .expiry(properties.getPresignedUrlExpirySeconds())
                   .build());
-      String base = properties.getDownloadUrlBase();
+      var base = properties.getDownloadUrlBase();
       if (StringUtils.hasText(base)) {
         try {
-          URI uri = new URI(url);
-          String path = uri.getRawPath();
-          String query = uri.getRawQuery();
+          var uri = new URI(url);
+          var path = uri.getRawPath();
+          var query = uri.getRawQuery();
           return base + path + (query != null ? "?" + query : "");
-        } catch (URISyntaxException e) {
-          LOGGER.warn("Invalid generated URL, falling back to original: {}", url, e);
-          return url;
+        } catch (URISyntaxException ex) {
+          log.warn("Invalid generated URL, falling back to original: {}", url, ex);
         }
       }
       return url;
-    } catch (Exception exception) {
-      throw new StorageException("Failed to generate download URL", exception);
+    } catch (Exception e) {
+      throw new StorageException("Failed to generate download URL", e);
     }
   }
 
@@ -157,8 +121,8 @@ public class MinioDocumentStorageService implements DocumentStorage {
               .object(objectKey)
               .expiry(properties.getPresignedUrlExpirySeconds())
               .build());
-    } catch (Exception exception) {
-      throw new StorageException("Failed to generate upload URL", exception);
+    } catch (Exception e) {
+      throw new StorageException("Failed to generate upload URL", e);
     }
   }
 
@@ -175,22 +139,39 @@ public class MinioDocumentStorageService implements DocumentStorage {
       if (bucketReady.get()) {
         return;
       }
-      String bucketName = getBucket();
+      var bucketName = getBucket();
       if (!StringUtils.hasText(bucketName)) {
         throw new InvalidRequestException("No bucket configured for document storage");
       }
       try {
-        boolean exists =
+        var exists =
             minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
         if (!exists) {
           minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-          LOGGER.info("Created bucket {}", bucketName);
+          log.info("Created bucket {}", bucketName);
         }
-      } catch (Exception exception) {
-        LOGGER.error("Unable to ensure bucket existence for bucketName={}", bucketName, exception);
-        throw new StorageException("Unable to ensure bucket existence", exception);
+      } catch (Exception e) {
+        log.error("Unable to ensure bucket existence for bucketName={}", bucketName, e);
+        throw new StorageException("Unable to ensure bucket existence", e);
       }
       bucketReady.set(true);
+    }
+  }
+
+  private byte[] toByteArray(InputStream inputStream) {
+    try {
+      return inputStream.readAllBytes();
+    } catch (IOException e) {
+      throw new StorageException("Failed to read input stream", e);
+    }
+  }
+
+  private void sleep(int attempt) {
+    try {
+      Thread.sleep(1000L * attempt);
+    } catch (InterruptedException ie) {
+      Thread.currentThread().interrupt();
+      throw new StorageException("Upload retry interrupted", ie);
     }
   }
 }

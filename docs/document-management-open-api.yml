@@ -1,84 +1,82 @@
 openapi: 3.0.1
 info:
   title: Document Management Service API
-  description: All Management Service functionalities
+  description: REST API that manages document ingestion, metadata persistence, and signed URL generation.
   version: v0.0.1
 servers:
   - url: /
-    description: Default Server URL
+    description: Default server URL (resolved by gateway or reverse proxy)
 tags:
   - name: Document Management
-    description: Endpoints for document management.
+    description: Endpoints that drive the document upload and retrieval lifecycle.
 paths:
   /document-management/documents/uploads:
     post:
       tags:
         - Document Management
+      summary: Request a presigned upload URL
+      description: >-
+        Validates the client metadata, creates the target object key, and returns a presigned
+        PUT URL that can be used to upload the PDF document directly to MinIO.
       operationId: initiateUpload
       requestBody:
         required: true
+        description: Metadata used to validate the upload request and compose the object key.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/PresignedUrlRequest'
       responses:
         '201':
-          description: Presigned URL created successfully.
+          description: Presigned URL generated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UploadUrlResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /document-management/documents:
     post:
       tags:
         - Document Management
+      summary: Confirm a completed upload
+      description: >-
+        Persists the document metadata after the binary is uploaded to storage. The service
+        normalises the object key, stores document tags, and records the bucket information.
       operationId: confirmUpload
       requestBody:
         required: true
+        description: Metadata describing the uploaded document.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ConfirmUploadRequest'
       responses:
         '201':
-          description: Document created successfully.
+          description: Document metadata stored successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DocumentResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /document-management/documents/search:
     post:
       tags:
         - Document Management
+      summary: Search documents
+      description: >-
+        Returns a paginated list of documents that match the optional filters. The endpoint
+        supports multi-criteria sorting and enforces a page size between 1 and 100 items.
       operationId: searchDocuments
       parameters:
         - name: page
           in: query
-          description: Zero-based page index (0..N)
+          description: Zero-based page index (0..N).
           required: false
           schema:
             type: integer
@@ -86,135 +84,158 @@ paths:
             default: 0
         - name: size
           in: query
-          description: The size of the page to be returned
+          description: Page size to return (capped at 100 items).
           required: false
           schema:
             type: integer
             minimum: 1
+            maximum: 100
             default: 20
         - name: sort
           in: query
           description: >-
-            Sorting criteria in the format: property,(asc|desc). Multiple criteria supported.
+            Sorting criteria in the format `property,(asc|desc)`. Repeat the parameter to
+            provide multiple sort clauses. Defaults to `createdAt,desc`.
           required: false
+          style: form
+          explode: true
           schema:
             type: array
             items:
               type: string
+            example:
+              - createdAt,desc
       requestBody:
         required: false
+        description: Optional filters applied to the search query.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DocumentSearchFilters'
       responses:
         '200':
-          description: Documents found successfully.
+          description: Documents retrieved successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedDocumentResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /document-management/documents/{documentId}/download:
     get:
       tags:
         - Document Management
+      summary: Generate a presigned download URL
+      description: Returns a temporary signed URL that allows the caller to download the document binary.
       operationId: downloadDocument
       parameters:
         - name: documentId
           in: path
+          description: Identifier of the persisted document.
           required: true
           schema:
             type: string
+            format: uuid
       responses:
         '200':
-          description: OK
+          description: Presigned download URL generated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DocumentDownloadUrlResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 components:
   responses:
     BadRequest:
-      description: Bad Request
+      description: The request could not be processed because it failed validation.
       content:
-        '*/*':
+        application/json:
           schema:
-            type: object
-    Unauthorized:
-      description: Unauthorized
-      content:
-        '*/*':
-          schema:
-            type: object
-    Forbidden:
-      description: Forbidden
-      content:
-        '*/*':
-          schema:
-            type: object
+            $ref: '#/components/schemas/ApiErrorResponse'
     NotFound:
-      description: Not Found
+      description: The requested resource was not found.
       content:
-        '*/*':
+        application/json:
           schema:
-            type: object
-    Conflict:
-      description: Conflict
+            $ref: '#/components/schemas/ApiErrorResponse'
+    PayloadTooLarge:
+      description: The uploaded payload exceeds the configured size limit.
       content:
-        '*/*':
+        application/json:
           schema:
-            type: object
+            $ref: '#/components/schemas/ApiErrorResponse'
     InternalServerError:
-      description: Internal Server Error
+      description: The server encountered an unexpected error.
       content:
-        '*/*':
+        application/json:
           schema:
-            type: object
+            $ref: '#/components/schemas/ApiErrorResponse'
   schemas:
+    ApiErrorResponse:
+      type: object
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          format: int32
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
     PresignedUrlRequest:
       type: object
       required:
         - user
         - fileName
         - tags
+        - fileSize
       properties:
         user:
           type: string
+          minLength: 1
+          description: Identifier of the user initiating the upload.
         fileName:
           type: string
+          minLength: 1
+          description: Original name of the document supplied by the client.
         tags:
           type: array
+          description: Optional tags that categorise the document.
           items:
             type: string
+            minLength: 1
+          uniqueItems: true
+        fileSize:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Size of the document in bytes.
     UploadUrlResponse:
       type: object
+      required:
+        - url
       properties:
         url:
           type: string
+          format: uri
+          description: Presigned PUT URL generated for the upload.
     ConfirmUploadRequest:
       type: object
       required:
@@ -227,21 +248,39 @@ components:
       properties:
         user:
           type: string
+          minLength: 1
         fileName:
           type: string
+          minLength: 1
         tags:
           type: array
+          description: Tags to persist alongside the document metadata.
           items:
             type: string
+            minLength: 1
+          uniqueItems: true
         objectKey:
           type: string
+          minLength: 1
+          description: Object key produced during the presign call.
         fileSize:
           type: integer
           format: int64
+          minimum: 1
         contentType:
           type: string
+          minLength: 1
+          example: application/pdf
     DocumentResponse:
       type: object
+      required:
+        - id
+        - user
+        - name
+        - tags
+        - size
+        - type
+        - createdAt
       properties:
         id:
           type: string
@@ -254,16 +293,21 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
+          uniqueItems: true
         size:
           type: integer
           format: int64
+          minimum: 1
         type:
           type: string
+          example: application/pdf
         createdAt:
           type: string
           format: date-time
     DocumentSearchFilters:
       type: object
+      description: Optional filters applied when searching for documents.
       properties:
         user:
           type: string
@@ -273,11 +317,16 @@ components:
           nullable: true
         tags:
           type: array
+          nullable: true
           items:
             type: string
-          nullable: true
+            minLength: 1
+          uniqueItems: true
     PaginatedDocumentResponse:
       type: object
+      required:
+        - metadata
+        - documents
       properties:
         metadata:
           $ref: '#/components/schemas/PaginationMetadata'
@@ -287,24 +336,39 @@ components:
             $ref: '#/components/schemas/DocumentResponse'
     PaginationMetadata:
       type: object
+      required:
+        - currentPage
+        - itemsPerPage
+        - currentItems
+        - totalPages
+        - totalItems
       properties:
         currentPage:
           type: integer
           format: int32
+          minimum: 0
         itemsPerPage:
           type: integer
           format: int32
+          minimum: 1
         currentItems:
           type: integer
           format: int32
+          minimum: 0
         totalPages:
           type: integer
           format: int32
+          minimum: 0
         totalItems:
           type: integer
           format: int64
+          minimum: 0
     DocumentDownloadUrlResponse:
       type: object
+      required:
+        - url
       properties:
         url:
           type: string
+          format: uri
+          description: Presigned GET URL that can be used to download the document.

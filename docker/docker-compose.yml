@@ -33,6 +33,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      target: runtime
     container_name: document_management_service
     depends_on:
       - postgresql

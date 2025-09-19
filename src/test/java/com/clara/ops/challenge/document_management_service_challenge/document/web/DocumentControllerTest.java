@@ -1,6 +1,8 @@
 package com.clara.ops.challenge.document_management_service_challenge.document.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,10 +23,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -89,6 +93,28 @@ class DocumentControllerTest {
   }
 
   @Test
+  void searchDocumentsDefaultsToCreatedAtDescendingWhenSortMissing() throws Exception {
+    PaginatedDocumentResponse response =
+        new PaginatedDocumentResponse(new PaginationMetadata(0, 20, 1, 1, 1), List.of());
+    when(documentService.searchDocuments(any(), any()))
+        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(new DocumentEntity())));
+    when(documentMapper.toPaginatedResponse(any())).thenReturn(response);
+
+    mockMvc
+        .perform(
+            post(DOCUMENTS_BASE_PATH + "/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+    verify(documentService).searchDocuments(any(), captor.capture());
+    assertThat(captor.getValue().getSort().getOrderFor("createdAt")).isNotNull();
+    assertThat(captor.getValue().getSort().getOrderFor("createdAt").getDirection())
+        .isEqualTo(org.springframework.data.domain.Sort.Direction.DESC);
+  }
+
+  @Test
   void searchDocumentsWithSortParams() throws Exception {
     PaginatedDocumentResponse response =
         new PaginatedDocumentResponse(new PaginationMetadata(0, 20, 1, 1, 1), List.of());
@@ -124,23 +150,45 @@ class DocumentControllerTest {
   }
 
   @Test
-  void searchDocumentsInvalidParamsReturnsBadRequest() throws Exception {
+  void searchDocumentsClampsOversizedPageAndReturnsOk() throws Exception {
+    PaginatedDocumentResponse response =
+        new PaginatedDocumentResponse(new PaginationMetadata(0, 100, 1, 1, 1), List.of());
+    when(documentService.searchDocuments(any(), any()))
+        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(new DocumentEntity())));
+    when(documentMapper.toPaginatedResponse(any())).thenReturn(response);
+
     mockMvc
         .perform(
-            post(DOCUMENTS_BASE_PATH + "/search?size=0")
+            post(DOCUMENTS_BASE_PATH + "/search")
+                .param("size", "200")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+    verify(documentService).searchDocuments(any(), captor.capture());
+    assertThat(captor.getValue().getPageSize()).isEqualTo(100);
   }
 
   @Test
-  void searchDocumentsNegativePageReturnsBadRequest() throws Exception {
+  void searchDocumentsNegativePageClampedToZero() throws Exception {
+    PaginatedDocumentResponse response =
+        new PaginatedDocumentResponse(new PaginationMetadata(0, 20, 1, 1, 1), List.of());
+    when(documentService.searchDocuments(any(), any()))
+        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(new DocumentEntity())));
+    when(documentMapper.toPaginatedResponse(any())).thenReturn(response);
+
     mockMvc
         .perform(
-            post(DOCUMENTS_BASE_PATH + "/search?page=-1")
+            post(DOCUMENTS_BASE_PATH + "/search")
+                .param("page", "-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isOk());
+
+    ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+    verify(documentService).searchDocuments(any(), captor.capture());
+    assertThat(captor.getValue().getPageNumber()).isEqualTo(0);
   }
 
   @Test

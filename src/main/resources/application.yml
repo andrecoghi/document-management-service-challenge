@@ -1,4 +1,3 @@
-
 spring:
   application:
     name: document-management-service
@@ -37,3 +36,16 @@ document:
 logging:
   level:
     com.clara.ops.challenge.document_management_service_challenge: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  health:
+    memory:
+      threshold: 52428800

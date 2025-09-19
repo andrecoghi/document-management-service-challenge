@@ -1,0 +1,8 @@
+target/
+docker/
+docs/
+jmeter/
+src/test/
+.git
+.gitignore
+README.md
